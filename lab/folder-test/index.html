@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; connect-src 'none'; form-action 'none'; base-uri 'none'">
+<meta name="referrer" content="no-referrer">
+<title>Ordner-Test</title>
+<link rel="stylesheet" href="style.css">
+<script src="app.js" defer></script>
+</head>
+<body>
+<header class="kopf">
+  <h1>Ordner-Test</h1>
+</header>
+<main>
+  <section class="kasten">
+    <label for="geraet" class="feldname">Gerätename</label>
+    <input id="geraet" type="text" autocomplete="off" spellcheck="false" maxlength="32">
+    <div class="knoepfe">
+      <button id="waehlen" type="button" class="haupt">Ordner wählen</button>
+      <button id="starten" type="button" disabled>Test starten</button>
+      <button id="erneut" type="button" disabled>Erneut prüfen</button>
+    </div>
+    <p id="ordner" class="nebeninfo">Kein Ordner gewählt</p>
+  </section>
+
+  <section class="kasten">
+    <div class="kastenkopf">
+      <h2 id="ergebnis-titel">Ergebnis</h2>
+      <button id="kopieren" type="button" disabled>Kopieren</button>
+    </div>
+    <ol id="pruefungen" class="pruefungen"></ol>
+  </section>
+</main>
+<p id="fehler" class="fehler" role="alert"></p>
+</body>
+</html>
