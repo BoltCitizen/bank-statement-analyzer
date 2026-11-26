@@ -1,0 +1,108 @@
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+html,
+body {
+  margin: 0;
+  height: 100%;
+}
+body {
+  background: var(--md-surface);
+  color: var(--md-on-surface);
+  font: var(--md-body-large);
+  -webkit-tap-highlight-color: transparent;
+}
+button,
+input {
+  font: inherit;
+  color: inherit;
+}
+.num {
+  font-family: var(--md-font-number);
+  font-variant-numeric: tabular-nums;
+}
+.box {
+  background: var(--md-surface-container-low);
+  border-radius: var(--md-shape-card);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.box h2 {
+  margin: 0;
+  font: var(--md-title-medium);
+}
+.row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+}
+.muted {
+  color: var(--md-on-surface-variant);
+}
+.btn {
+  min-height: var(--md-button-height);
+  padding: 0 24px;
+  border-radius: var(--md-shape-full);
+  border: 1px solid var(--md-outline);
+  background: transparent;
+  font: var(--md-label-large);
+  cursor: pointer;
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.btn.filled {
+  background: var(--md-primary);
+  color: var(--md-on-primary);
+  border-color: transparent;
+}
+.btn:disabled {
+  opacity: 0.38;
+  cursor: default;
+}
+.btns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.icon-btn {
+  width: var(--md-touch);
+  height: var(--md-touch);
+  border-radius: var(--md-shape-full);
+  border: none;
+  background: transparent;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+.icon-btn:disabled {
+  opacity: 0.38;
+  cursor: default;
+}
+.icon-btn svg {
+  width: 24px;
+  height: 24px;
+  fill: currentColor;
+}
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.field input {
+  min-height: var(--md-button-height);
+  padding: 0 16px;
+  border: 1px solid var(--md-outline);
+  border-radius: var(--md-shape-field);
+  background: transparent;
+}
+.field input:focus {
+  outline: 2px solid var(--md-primary);
+  outline-offset: -1px;
+}
