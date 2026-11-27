@@ -372,6 +372,7 @@
   function berichtText() {
     const kopf = [
       lauf,
+      'Stand: diagnose-lesen',
       'Zeit: ' + new Date().toISOString(),
       'Gerät: ' + geraet(),
       'Ordner: ' + (handle ? handle.name : '-'),
