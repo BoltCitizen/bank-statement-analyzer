@@ -35,7 +35,7 @@ Each device writes only its own files. That way pCloud never has two versions of
 
 Data flow: GitHub Pages (app code only) → phone (Vanadium) and laptop (Brave), each running offline → each reads all files and writes only its own through Cryptomator (Android document provider / desktop mount) → pCloud syncs the encrypted vault files.
 
-**Proposed vault layout** (one app folder in the vault; depends on the folder test):
+**Vault layout** (one app folder in the vault; folder access confirmed by the folder test):
 
 | Path | Written by | Content |
 | --- | --- | --- |
@@ -120,9 +120,9 @@ All tests run on synthetic data only. Real bank data never enters the repo, Clau
 
 ## Open questions
 
-- [ ] Does folder access work in Vanadium with the Cryptomator vault? Chromium on Android supports a folder picker, but Cryptomator doesn't document folder access by other apps, so a folder test is needed. Fallback: see "Architecture and file layout".
+- [x] Does folder access work in Vanadium with the Cryptomator vault? Yes (folder test in `lab/folder-test/`, 2026-11-27): listing, creating, writing, overwriting without "(1)" copies and subfolders all work, and the laptop (Brave, mounted vault) sees the phone's files after pCloud sync. Catch: in the vault, a read right after a write returns an error, an empty file or the old content for up to about 5 s. So the app never reads back its own writes; it keeps what it wrote in memory.
 - [ ] Read the Python app (Agent Scope) for the state file formats, the rule language and the re-link logic.
 - [x] Tech stack: Svelte + TypeScript + Vite, tests with Vitest and Playwright (Vincent, 2026-11-26).
 - [ ] Python app after migration: read-only or retired?
 - [ ] Names of the views in the bottom bar.
-- [ ] Does the Android document provider keep folder access after a phone restart without asking again?
+- [x] Does the Android document provider keep folder access after a phone restart without asking again? Yes (2026-11-27): the stored folder handle had permission without a prompt after a restart.
