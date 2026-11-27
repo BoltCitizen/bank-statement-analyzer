@@ -125,6 +125,30 @@
     const fh = await dir.getFileHandle(name);
     return (await fh.getFile()).text();
   }
+  const bytes = (t) => new TextEncoder().encode(t).length;
+  const warte = (ms) => new Promise((r) => setTimeout(r, ms));
+  const WARTEZEITEN = [500, 1000, 2000, 4000, 8000]; // zusammen 15,5 s
+  // Liest zurück und vergleicht. Stimmt es nicht sofort, wird mit frischem
+  // Handle mehrmals nachgelesen, um verzögerte Anbieter zu erkennen.
+  async function zuruecklesen(dir, name, soll) {
+    const start = performance.now();
+    const fh0 = await dir.getFileHandle(name);
+    const f0 = await fh0.getFile();
+    const ist0 = await f0.text();
+    if (ist0 === soll) return 'Inhalt stimmt (' + bytes(soll) + ' Byte)';
+    const sofort = 'sofort ' + f0.size + ' Byte gelesen, erwartet ' + bytes(soll) + ' Byte';
+    let letzt = ist0, groesse = f0.size;
+    for (const ms of WARTEZEITEN) {
+      await warte(ms);
+      const f = await (await dir.getFileHandle(name)).getFile();
+      letzt = await f.text(); groesse = f.size;
+      if (letzt === soll) {
+        const sek = ((performance.now() - start) / 1000).toFixed(1).replace('.', ',');
+        return { status: 'Info', detail: sofort + '; richtig nach ' + sek + ' s' };
+      }
+    }
+    throw new Error(sofort + '; nach 15 s noch ' + groesse + ' Byte: ' + JSON.stringify(letzt.slice(0, 40)));
+  }
   async function auflisten(dir) {
     const namen = [];
     for await (const [name, h] of dir.entries()) namen.push(h.kind === 'directory' ? name + '/' : name);
@@ -202,25 +226,21 @@
       const geschrieben = fh && await pruefe('Datei schreiben', async () => {
         const w = await fh.createWritable();
         await w.write(soll); await w.close();
-        return soll.length + ' Zeichen';
+        lsSet(LS_INHALT, soll);
+        return bytes(soll) + ' Byte';
       });
 
-      geschrieben && await pruefe('Datei zurücklesen', async () => {
-        const ist = await lesen(handle, n.datei);
-        if (ist !== soll) throw new Error('Inhalt weicht ab: ' + JSON.stringify(ist.slice(0, 80)));
-        return 'Inhalt stimmt';
-      });
+      geschrieben && await pruefe('Datei zurücklesen', () => zuruecklesen(handle, n.datei, soll));
 
       geschrieben && await pruefe('Datei überschreiben ohne Kopie', async () => {
         soll = inhalt('Datei überschrieben');
         await schreiben(handle, n.datei, soll);
-        const ist = await lesen(handle, n.datei);
-        if (ist !== soll) throw new Error('Inhalt nach Überschreiben weicht ab');
+        lsSet(LS_INHALT, soll);
+        const r = await zuruecklesen(handle, n.datei, soll);
         const stamm = n.datei.replace(/\.txt$/, '');
         const kopien = (await auflisten(handle)).filter((x) => x.startsWith(stamm) && /\(\d+\)/.test(x.slice(stamm.length)));
         if (kopien.length) throw new Error('Kopien gefunden: ' + kopien.join(', '));
-        lsSet(LS_INHALT, soll);
-        return 'Inhalt stimmt, keine Kopie';
+        return typeof r === 'string' ? r + ', keine Kopie' : { status: r.status, detail: r.detail + ', keine Kopie' };
       });
 
       const ud = await pruefe('Unterordner anlegen', async () => {
@@ -231,16 +251,13 @@
       ud && await pruefe('Datei im Unterordner schreiben und lesen', async () => {
         const t = inhalt('Unterordner');
         await schreiben(ud, 'inhalt.txt', t);
-        const ist = await lesen(ud, 'inhalt.txt');
-        if (ist !== t) throw new Error('Inhalt weicht ab');
-        return n.unterordner + '/inhalt.txt';
+        return zuruecklesen(ud, 'inhalt.txt', t);
       });
 
       await pruefe('Marker mit Gerätename hinterlassen', async () => {
         const t = inhalt('Marker');
         await schreiben(handle, n.marker, t);
-        if (await lesen(handle, n.marker) !== t) throw new Error('Marker weicht ab');
-        return n.marker;
+        return zuruecklesen(handle, n.marker, t);
       });
 
       await pruefe('Marker anderer Geräte', () => fremdeMarker(handle));
@@ -302,18 +319,21 @@
       });
 
       await pruefe('Eigene Testdatei lesen', async () => {
-        const ist = await lesen(h, n.datei);
+        const f = await (await h.getFileHandle(n.datei)).getFile();
+        const ist = await f.text();
         const soll = lsGet(LS_INHALT);
-        if (soll && ist !== soll) throw new Error('Inhalt weicht vom zuletzt geschriebenen ab');
-        return soll ? 'Inhalt stimmt' : 'gelesen (Vergleich nicht möglich)';
+        const zeile1 = JSON.stringify(ist.split('\n')[0] || '');
+        if (soll && ist !== soll) {
+          throw new Error(f.size + ' Byte gelesen, erwartet ' + bytes(soll) + ' Byte: ' + zeile1);
+        }
+        return (soll ? 'Inhalt stimmt' : 'Vergleich nicht möglich') + ' (' + f.size + ' Byte): ' + zeile1;
       });
 
       await pruefe('Eigene Testdatei schreiben', async () => {
         const t = inhalt('Datei nach Erneut prüfen');
         await schreiben(h, n.datei, t);
-        if (await lesen(h, n.datei) !== t) throw new Error('Inhalt weicht ab');
         lsSet(LS_INHALT, t);
-        return n.datei;
+        return zuruecklesen(h, n.datei, t);
       });
 
       await pruefe('Unterordner lesen', async () => {
