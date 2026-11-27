@@ -120,6 +120,7 @@ test('Verzögerter Anbieter: leer direkt nach Schreiben, später richtig', async
       const gf = FileSystemFileHandle.prototype.getFile;
       FileSystemFileHandle.prototype.getFile = async function () {
         const t = zuletzt.get(this.name);
+        if (t && Date.now() - t < 600) throw new DOMException('simuliert', 'NotReadableError');
         if (t && Date.now() - t < 1200) return new File([], this.name);
         return gf.call(this);
       };
@@ -133,7 +134,7 @@ test('Verzögerter Anbieter: leer direkt nach Schreiben, später richtig', async
     assert.deepStrictEqual(r.filter((x) => x.status === 'Fehlgeschlagen'), []);
     const z = r.find((x) => x.name === 'Datei zurücklesen');
     assert.strictEqual(z.status, 'Info');
-    assert.match(z.detail, /^sofort 0 Byte gelesen, erwartet \d+ Byte; richtig nach \d+,\d s$/);
+    assert.match(z.detail, /^sofort: NotReadableError: simuliert, erwartet \d+ Byte; richtig nach \d+,\d s$/);
   } finally {
     await browser.close();
     server.close();
