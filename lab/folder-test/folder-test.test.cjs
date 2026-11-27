@@ -91,9 +91,49 @@ test('Test starten, Marker eines anderen Geräts, Erneut prüfen nach Neuladen',
     const failed2 = r.filter((x) => x.status === 'Fehlgeschlagen');
     assert.deepStrictEqual(failed2, [], JSON.stringify(failed2));
     assert.ok(r.some((x) => x.name === 'Berechtigung ohne Nachfrage' && x.status === 'OK'));
-    assert.ok(r.some((x) => x.name === 'Eigene Testdatei lesen' && x.detail === 'Inhalt stimmt'));
+    assert.ok(r.some((x) => x.name === 'Eigene Testdatei lesen' && x.detail.startsWith('Inhalt stimmt ('))) ;
 
     assert.deepStrictEqual(errors, []);
+  } finally {
+    await browser.close();
+    server.close();
+  }
+});
+
+test('Verzögerter Anbieter: leer direkt nach Schreiben, später richtig', async () => {
+  const server = await serve();
+  const url = 'http://127.0.0.1:' + server.address().port + '/';
+  const browser = await chromium.launch();
+  try {
+    const ctx = await browser.newContext();
+    await ctx.addInitScript(() => {
+      window.showDirectoryPicker = async () => (await navigator.storage.getDirectory()).getDirectoryHandle('tresor2', { create: true });
+      const zuletzt = new Map();
+      const cw = FileSystemFileHandle.prototype.createWritable;
+      FileSystemFileHandle.prototype.createWritable = async function (...a) {
+        const w = await cw.apply(this, a);
+        const close = w.close.bind(w);
+        const name = this.name;
+        w.close = async () => { await close(); zuletzt.set(name, Date.now()); };
+        return w;
+      };
+      const gf = FileSystemFileHandle.prototype.getFile;
+      FileSystemFileHandle.prototype.getFile = async function () {
+        const t = zuletzt.get(this.name);
+        if (t && Date.now() - t < 1200) return new File([], this.name);
+        return gf.call(this);
+      };
+    });
+    const page = await ctx.newPage();
+    await page.goto(url);
+    await page.fill('#geraet', 'Handy');
+    await page.click('#waehlen');
+    await page.waitForFunction(() => !document.getElementById('erneut').disabled, null, { timeout: 60000 });
+    const r = await rows(page);
+    assert.deepStrictEqual(r.filter((x) => x.status === 'Fehlgeschlagen'), []);
+    const z = r.find((x) => x.name === 'Datei zurücklesen');
+    assert.strictEqual(z.status, 'Info');
+    assert.match(z.detail, /^sofort 0 Byte gelesen, erwartet \d+ Byte; richtig nach \d+,\d s$/);
   } finally {
     await browser.close();
     server.close();
