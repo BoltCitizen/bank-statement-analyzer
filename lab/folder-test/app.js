@@ -132,22 +132,29 @@
   // Handle mehrmals nachgelesen, um verzögerte Anbieter zu erkennen.
   async function zuruecklesen(dir, name, soll) {
     const start = performance.now();
-    const fh0 = await dir.getFileHandle(name);
-    const f0 = await fh0.getFile();
-    const ist0 = await f0.text();
-    if (ist0 === soll) return 'Inhalt stimmt (' + bytes(soll) + ' Byte)';
-    const sofort = 'sofort ' + f0.size + ' Byte gelesen, erwartet ' + bytes(soll) + ' Byte';
-    let letzt = ist0, groesse = f0.size;
+    // Ein Leseversuch: { ok, text } oder { fehler } (z. B. NotReadableError).
+    const versuch = async () => {
+      try {
+        const f = await (await dir.getFileHandle(name)).getFile();
+        const t = await f.text();
+        return { ok: t === soll, info: f.size + ' Byte', text: t };
+      } catch (e) {
+        return { ok: false, info: fehlerText(e), text: '' };
+      }
+    };
+    const v0 = await versuch();
+    if (v0.ok) return 'Inhalt stimmt (' + bytes(soll) + ' Byte)';
+    const sofort = 'sofort: ' + v0.info + ', erwartet ' + bytes(soll) + ' Byte';
+    let letzt = v0;
     for (const ms of WARTEZEITEN) {
       await warte(ms);
-      const f = await (await dir.getFileHandle(name)).getFile();
-      letzt = await f.text(); groesse = f.size;
-      if (letzt === soll) {
+      letzt = await versuch();
+      if (letzt.ok) {
         const sek = ((performance.now() - start) / 1000).toFixed(1).replace('.', ',');
         return { status: 'Info', detail: sofort + '; richtig nach ' + sek + ' s' };
       }
     }
-    throw new Error(sofort + '; nach 15 s noch ' + groesse + ' Byte: ' + JSON.stringify(letzt.slice(0, 40)));
+    throw new Error(sofort + '; nach 15 s noch: ' + letzt.info + ' ' + JSON.stringify(letzt.text.slice(0, 40)));
   }
   async function auflisten(dir) {
     const namen = [];
@@ -372,7 +379,7 @@
   function berichtText() {
     const kopf = [
       lauf,
-      'Stand: diagnose-lesen',
+      'Stand: lesen-mit-warten',
       'Zeit: ' + new Date().toISOString(),
       'Gerät: ' + geraet(),
       'Ordner: ' + (handle ? handle.name : '-'),
