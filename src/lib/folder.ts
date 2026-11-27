@@ -23,6 +23,10 @@ export function deviceIdFor(name: string): string {
   return id || 'geraet';
 }
 
+const OWN_READ_ATTEMPTS = 6;
+const OWN_READ_RETRY_MS = 1000;
+export const OWN_STALE = 'Die eigene Log-Datei ist noch nicht aktuell. Bitte in ein paar Sekunden neu öffnen.';
+
 export interface FolderProblem {
   message: string;
 }
@@ -48,7 +52,13 @@ export class DataFolder {
     readonly store: FileStore,
     readonly device: string,
     private readonly now: () => Date = () => new Date(),
+    private readonly wait: (ms: number) => Promise<void> = (ms) => new Promise((r) => setTimeout(r, ms)),
   ) {}
+
+  /** Highest seq in this device's log as far as this session knows. */
+  get ownSeq(): number {
+    return this.seq;
+  }
 
   get logPath(): string {
     return `${LOG_DIR}/${this.device}.jsonl`;
@@ -65,7 +75,13 @@ export class DataFolder {
       .map((e) => e.name.slice(0, -'.jsonl'.length));
   }
 
-  async load(): Promise<LoadResult> {
+  /**
+   * Reads all logs. expectSeq is the highest seq this device is known to have
+   * written (remembered in the browser): a re-read of its own log that is
+   * behind it is stale, so it is read again for a few seconds and then refused,
+   * because writing on top of a stale copy would lose entries.
+   */
+  async load(opts: { expectSeq?: number } = {}): Promise<LoadResult> {
     const problems: FolderProblem[] = [];
     const logs: LogEntry[][] = [];
     let own: LogEntry[] = [];
@@ -75,11 +91,25 @@ export class DataFolder {
         problems.push({ message: `Konfliktkopie gefunden: ${LOG_DIR}/${e.name}. Sie wird nicht übernommen.` });
         continue;
       }
-      const text = (await this.store.read(`${LOG_DIR}/${e.name}`)) ?? '';
-      const parsed = parseLog(`${LOG_DIR}/${e.name}`, text);
+      const isOwn = e.name === `${this.device}.jsonl`;
+      const parsed = isOwn
+        ? await this.readOwn(Math.max(opts.expectSeq ?? 0, this.seq))
+        : parseLog(`${LOG_DIR}/${e.name}`, (await this.store.read(`${LOG_DIR}/${e.name}`)) ?? '');
       problems.push(...parsed.problems.map(describe));
       logs.push(parsed.entries);
-      if (e.name === `${this.device}.jsonl`) own = parsed.entries;
+      if (isOwn) own = parsed.entries;
+    }
+    if (!own.length && (opts.expectSeq ?? 0) > this.seq) {
+      throw new Error(OWN_STALE);
+    }
+    // Our own log: what we wrote this session beats a re-read, which may be stale.
+    const fileSeq = own.reduce((m, x) => Math.max(m, x.seq), 0);
+    const memSeq = this.own.reduce((m, x) => Math.max(m, x.seq), 0);
+    if (memSeq > fileSeq) {
+      const i = logs.indexOf(own);
+      if (i >= 0) logs[i] = this.own;
+      else logs.push(this.own);
+      own = this.own;
     }
     this.entries = logs;
     this.own = own;
@@ -89,6 +119,17 @@ export class DataFolder {
     return { state: this.state, problems, ownSeq: this.seq };
   }
 
+  private async readOwn(expect: number): Promise<{ entries: LogEntry[]; problems: LogProblem[] }> {
+    for (let attempt = 1; ; attempt++) {
+      const parsed = parseLog(this.logPath, (await this.store.read(this.logPath)) ?? '');
+      const seq = parsed.entries.reduce((m, x) => Math.max(m, x.seq), 0);
+      // What this session wrote itself is known in memory; only a gap before that matters.
+      if (seq >= expect || this.seq >= expect) return parsed;
+      if (attempt >= OWN_READ_ATTEMPTS) throw new Error(OWN_STALE);
+      await this.wait(OWN_READ_RETRY_MS);
+    }
+  }
+
   /** Writes one user action (one or more entries) to this device's log. */
   async record(newEntries: NewEntry[], opts: { undoable?: boolean } = {}): Promise<string> {
     // Never earlier than anything this device has seen, so a change made after
@@ -96,13 +137,19 @@ export class DataFolder {
     const latest = this.entries.flat().reduce((m, e) => Math.max(m, Date.parse(e.ts)), 0);
     const ts = new Date(Math.max(this.now().getTime(), latest + 1)).toISOString();
     const action = `${this.device}:${this.seq + 1}`;
+    let seq = this.seq;
     const written: LogEntry[] = newEntries.map((n) => {
-      this.seq += 1;
-      return { ...n, id: `${this.device}:${this.seq}`, device: this.device, seq: this.seq, ts, action } as LogEntry;
+      seq += 1;
+      return { ...n, id: `${this.device}:${seq}`, device: this.device, seq, ts, action } as LogEntry;
     });
-    await this.store.append(this.logPath, written.map((e) => JSON.stringify(e) + '\n').join(''));
-    this.own.push(...written);
-    if (!this.entries.includes(this.own)) this.entries.push(this.own);
+    const next = [...this.own, ...written];
+    // Whole file from memory: no append, no read-back of our own file.
+    await this.store.write(this.logPath, next.map((e) => JSON.stringify(e) + '\n').join(''));
+    this.seq = seq;
+    const i = this.entries.indexOf(this.own);
+    this.own = next;
+    if (i >= 0) this.entries[i] = this.own;
+    else this.entries.push(this.own);
     this.state = mergeLogs(this.entries);
     if (opts.undoable !== false) this.undoStack.push(action);
     return action;

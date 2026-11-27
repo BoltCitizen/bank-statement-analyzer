@@ -14,6 +14,7 @@ function createApp(): App {
   // Browser tests: the file layer is an in-memory test double, seeded by the test.
   const seed = (window as unknown as { __BSA_SEED__?: Record<string, string> }).__BSA_SEED__ ?? {};
   let device: string | undefined = (window as unknown as { __BSA_DEVICE__?: string }).__BSA_DEVICE__;
+  let seq: number | undefined;
   const store = new MemoryStore(seed);
   (window as unknown as { __BSA_STORE__: MemoryStore }).__BSA_STORE__ = store;
   const local: Local = {
@@ -21,6 +22,8 @@ function createApp(): App {
     setFolder: async () => {},
     getDevice: async () => device,
     setDevice: async (id) => void (device = id),
+    getSeq: async () => seq,
+    setSeq: async (n) => void (seq = n),
   };
   return new App(local, { store, name: 'Testordner' });
 }

@@ -18,6 +18,11 @@ Bank Statement Analyzer: an offline web app for DKB bank statements. It replaces
 - The app makes no network calls except loading itself. No analytics, no telemetry, no error reporting.
 - The Python app is read only in its own folder, read-only.
 
+## Data folder
+
+- Each device writes only its own `log/<device>.jsonl`, always as a whole file from memory (no append).
+- Never read your own writes back. In the Cryptomator vault on Android a read right after a write can fail, be empty or show old content for about 5 s (folder test, 2026-11-27). The browser remembers the last seq it wrote; a re-read of the own log that is behind it is stale and must not be written over.
+
 ## UI
 
 - The UI is German. App-Präferenzen (Vincent's doc in claude.ai) applies in full: Material 3 Expressive, Roboto Flex / Roboto Mono, fixed "Rückgängig" button in the header, no confirmation toasts, errors only at the bottom, explicit over automatic, "≈" for estimated values.
