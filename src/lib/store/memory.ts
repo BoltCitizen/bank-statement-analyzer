@@ -30,10 +30,6 @@ export class MemoryStore implements FileStore {
     this.files.set(clean(path), text);
   }
 
-  async append(path: string, text: string): Promise<void> {
-    splitPath(path);
-    this.files.set(clean(path), (this.files.get(clean(path)) ?? '') + text);
-  }
 }
 
 function clean(p: string): string {

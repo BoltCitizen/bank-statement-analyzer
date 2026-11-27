@@ -4,10 +4,13 @@ export interface FileStore {
   list(dir: string): Promise<DirEntry[]>;
   /** File content, or null if the file does not exist. */
   read(path: string): Promise<string | null>;
-  /** Creates parent folders as needed and replaces the file. */
+  /**
+   * Creates parent folders as needed and replaces the whole file.
+   * There is no append: in the Cryptomator vault on Android a read right after
+   * a write can fail or return old content for ~5 s, so callers keep what they
+   * wrote in memory and never read their own writes back.
+   */
   write(path: string, text: string): Promise<void>;
-  /** Creates parent folders and the file as needed and adds text at the end. */
-  append(path: string, text: string): Promise<void>;
 }
 
 export interface DirEntry {

@@ -30,6 +30,8 @@ async function tx<T>(mode: IDBTransactionMode, run: (s: IDBObjectStore) => IDBRe
 export interface LocalState {
   folder?: FileSystemDirectoryHandle;
   device?: string;
+  /** Highest seq this browser wrote to its own log, to recognize a stale re-read. */
+  seq?: number;
 }
 
 export async function getLocal<K extends keyof LocalState>(key: K): Promise<LocalState[K]> {

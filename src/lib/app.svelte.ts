@@ -12,6 +12,8 @@ export interface Local {
   setFolder(h: FileSystemDirectoryHandle): Promise<void>;
   getDevice(): Promise<string | undefined>;
   setDevice(id: string): Promise<void>;
+  getSeq(): Promise<number | undefined>;
+  setSeq(seq: number): Promise<void>;
 }
 
 export const browserLocal: Local = {
@@ -19,6 +21,8 @@ export const browserLocal: Local = {
   setFolder: (h) => setLocal('folder', h),
   getDevice: () => getLocal('device'),
   setDevice: (id) => setLocal('device', id),
+  getSeq: () => getLocal('seq'),
+  setSeq: (seq) => setLocal('seq', seq),
 };
 
 export class App {
@@ -116,7 +120,9 @@ export class App {
       await f.load();
       await f.register(clean);
       await this.local.setDevice(id);
-      await this.open(id);
+      await this.local.setSeq(f.ownSeq);
+      // Keep this instance: re-reading the file just written can be stale in the vault.
+      this.use(f, []);
     });
   }
 
@@ -124,17 +130,22 @@ export class App {
   async continueAs(id: string): Promise<void> {
     await this.guard(async () => {
       await this.local.setDevice(id);
+      await this.local.setSeq(0); // what this browser wrote before belongs to another device
       await this.open(id);
     });
   }
 
   private async open(id: string): Promise<void> {
     const f = new DataFolder(this.store!, id);
-    const { problems } = await f.load();
+    const { problems } = await f.load({ expectSeq: (await this.local.getSeq()) ?? 0 });
+    this.use(f, problems.map((p) => p.message));
+  }
+
+  private use(f: DataFolder, errors: string[]): void {
     this.folder = f;
-    this.device = id;
-    this.deviceName = f.state.devices.get(id) ?? id;
-    this.errors = problems.map((p) => p.message);
+    this.device = f.device;
+    this.deviceName = f.state.devices.get(f.device) ?? f.device;
+    this.errors = errors;
     this.sync();
     this.phase = 'ready';
   }
@@ -142,8 +153,14 @@ export class App {
   async undo(): Promise<void> {
     await this.guard(async () => {
       await this.folder?.undo();
-      this.sync();
+      await this.saved();
     });
+  }
+
+  /** After every write: remember our seq, so a stale re-read after a restart is recognized. */
+  private async saved(): Promise<void> {
+    if (this.folder) await this.local.setSeq(this.folder.ownSeq);
+    this.sync();
   }
 
   private sync(): void {

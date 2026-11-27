@@ -31,12 +31,17 @@ export class FsAccessStore implements FileStore {
     const { dirs, name } = splitPath(path);
     const dir = await this.dir(dirs, false);
     if (!dir) return null;
-    try {
-      const file = await (await dir.getFileHandle(name)).getFile();
-      return await file.text();
-    } catch (e) {
-      if (isNotFound(e)) return null;
-      throw e;
+    // The vault's document provider can answer NotReadableError for a few
+    // seconds after a sync wrote the file; try again before giving up.
+    for (let attempt = 1; ; attempt++) {
+      try {
+        const file = await (await dir.getFileHandle(name)).getFile();
+        return await file.text();
+      } catch (e) {
+        if (isNotFound(e)) return null;
+        if (!isNotReadable(e) || attempt >= READ_ATTEMPTS) throw e;
+        await new Promise((r) => setTimeout(r, READ_RETRY_MS));
+      }
     }
   }
 
@@ -49,16 +54,13 @@ export class FsAccessStore implements FileStore {
     await w.close();
   }
 
-  async append(path: string, text: string): Promise<void> {
-    const { dirs, name } = splitPath(path);
-    const dir = (await this.dir(dirs, true))!;
-    const handle = await dir.getFileHandle(name, { create: true });
-    const size = (await handle.getFile()).size;
-    const w = await handle.createWritable({ keepExistingData: true });
-    await w.seek(size);
-    await w.write(text);
-    await w.close();
-  }
+}
+
+const READ_ATTEMPTS = 6;
+const READ_RETRY_MS = 1000;
+
+function isNotReadable(e: unknown): boolean {
+  return e instanceof DOMException && e.name === 'NotReadableError';
 }
 
 function isNotFound(e: unknown): boolean {
